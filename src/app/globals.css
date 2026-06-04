@@ -1,0 +1,175 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 255 255 255;
+  --foreground: 15 23 42;
+  --card: 255 255 255;
+  --muted: 241 245 249;
+  --muted-foreground: 100 116 139;
+  --border: 226 232 240;
+  --ring: 37 99 235;
+  --brand: 37 99 235;
+  --success: 5 150 105;
+  --warning: 217 119 6;
+  --danger: 220 38 38;
+  --radius: 0.75rem;
+}
+
+.dark {
+  --background: 2 6 23;
+  --foreground: 248 250 252;
+  --card: 15 23 42;
+  --muted: 30 41 59;
+  --muted-foreground: 148 163 184;
+  --border: 30 41 59;
+  --ring: 96 165 250;
+  --brand: 96 165 250;
+}
+
+* {
+  border-color: rgb(var(--border));
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: rgb(var(--background));
+  color: rgb(var(--foreground));
+  font-feature-settings: "rlig" 1, "calt" 1, "kern" 1;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+[dir="rtl"] {
+  font-family: var(--font-tajawal), system-ui, sans-serif;
+  letter-spacing: -0.01em;
+}
+
+[dir="ltr"] {
+  font-family: var(--font-inter), system-ui, sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-tajawal), var(--font-inter), system-ui, sans-serif;
+  letter-spacing: -0.015em;
+}
+
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
+  }
+
+  .card {
+    @apply rounded-2xl border bg-white shadow-sm transition-shadow hover:shadow-md;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none;
+  }
+
+  .btn-primary {
+    @apply btn bg-brand-600 text-white shadow-sm hover:bg-brand-700 active:bg-brand-800;
+  }
+
+  .btn-secondary {
+    @apply btn bg-ink-100 text-ink-900 hover:bg-ink-200;
+  }
+
+  .btn-outline {
+    @apply btn border border-ink-300 bg-white text-ink-900 hover:bg-ink-50;
+  }
+
+  .btn-ghost {
+    @apply btn text-ink-700 hover:bg-ink-100;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-ink-300 bg-white px-4 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20;
+  }
+
+  .label {
+    @apply mb-1.5 block text-sm font-medium text-ink-700;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  .badge-success {
+    @apply badge bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200;
+  }
+
+  .badge-warning {
+    @apply badge bg-amber-50 text-amber-700 ring-1 ring-amber-200;
+  }
+
+  .badge-danger {
+    @apply badge bg-rose-50 text-rose-700 ring-1 ring-rose-200;
+  }
+
+  .badge-info {
+    @apply badge bg-brand-50 text-brand-700 ring-1 ring-brand-200;
+  }
+
+  .badge-neutral {
+    @apply badge bg-ink-100 text-ink-700 ring-1 ring-ink-200;
+  }
+
+  .hero-gradient {
+    background:
+      radial-gradient(ellipse 80% 60% at 50% -20%, rgba(31, 79, 134, 0.16), transparent 60%),
+      radial-gradient(ellipse 60% 40% at 80% 10%, rgba(42, 157, 139, 0.14), transparent 60%),
+      linear-gradient(to bottom, #f7f9fc, #ffffff);
+  }
+
+  .glass {
+    @apply backdrop-blur-md bg-white/70 border border-white/40;
+  }
+
+  .skeleton {
+    @apply animate-pulse rounded-md bg-gradient-to-r from-ink-100 via-ink-200 to-ink-100 bg-[length:200%_100%];
+  }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(241, 245, 249, 0.4) 0%,
+    rgba(241, 245, 249, 0.9) 50%,
+    rgba(241, 245, 249, 0.4) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s linear infinite;
+}
+
+/* RTL specific adjustments */
+[dir="rtl"] .lucide {
+  transform: scaleX(1);
+}
+
+[dir="rtl"] .flip-rtl {
+  transform: scaleX(-1);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(203 213 225);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(148 163 184);
+}

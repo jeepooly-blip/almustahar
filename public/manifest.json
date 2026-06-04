@@ -1,0 +1,14 @@
+{
+  "name": "Legal Navigator Pro",
+  "short_name": "Legal Nav",
+  "description": "افهم حقوقك. تعامل مع القانون بثقة.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1d4ed8",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

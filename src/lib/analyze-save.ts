@@ -173,7 +173,7 @@ export async function saveAnalysisWithUser(
 
   return {
     ok: false,
-    reason: `prisma: ${prismaRes.reason} | rest: ${restRes.reason}`,
+    reason: `prisma=[${prismaRes.code ?? "?"}/${prismaRes.reason.slice(0, 60)}]; rest=[${restRes.code ?? "?"}/${restRes.reason.slice(0, 60)}]`,
     code: prismaRes.code ?? restRes.code,
   };
 }

@@ -87,6 +87,13 @@ export async function POST(req: Request) {
         console.error("PRISMA_ERROR_NAME:", e?.constructor?.name);
         console.error("PRISMA_ERROR_CODE:", e?.code);
         console.error("PRISMA_ERROR_MESSAGE:", e?.message);
+        const reason = e?.code
+          ? `${e.code}: ${e?.message?.slice(0, 200) ?? "unknown"}`
+          : e?.message?.slice(0, 200) ?? "database insert failed";
+        return NextResponse.json(
+          { error: "db_insert_failed", reason, analysisId: analysis.id, provider: isGeminiConfigured() ? "gemini" : "mock" },
+          { status: 500 },
+        );
       }
     }
 

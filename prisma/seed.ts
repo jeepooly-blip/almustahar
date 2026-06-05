@@ -1,10 +1,12 @@
 import { PrismaClient } from "@prisma/client";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { CORPUS, describeArticle } from "../data/jordanian-corpus";
 
 const prisma = new PrismaClient();
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 const EMBED_MODEL = "gemini-embedding-001";
 const EMBED_DIM = 768;
+const SLEEP_MS = 200;
 
 async function embed(text: string): Promise<number[] | null> {
   if (!genAI) return null;
@@ -128,23 +130,32 @@ async function main() {
     },
   });
 
-  // ----- Legal corpus (with embeddings) -----
-  const articles = [
-    { id: "seed-rental-14", lawName: "قانون الإيجار الأردني", lawType: "rental", articleNumber: "المادة 14", title: "حقوق المستأجر", content: "لا يجوز للمالك أن يطلب إخلاء المأجور قبل انقضاء مدة العقد إلا في حالات محددة حصراً." },
-    { id: "seed-labor-22", lawName: "قانون العمل الأردني", lawType: "labor", articleNumber: "المادة 22", title: "إنهاء عقد العمل", content: "لا يجوز لصاحب العمل فصل العامل إلا في حالات محددة، ويجب إخطاره قبل شهر على الأقل." },
-    { id: "seed-traffic-39", lawName: "قانون المرور الأردني", lawType: "traffic", articleNumber: "المادة 39", title: "قطع الإشارة الضوئية", content: "يعاقب بغرامة لا تقل عن 100 دينار كل من قطع إشارة ضوئية حمراء." },
-    { id: "seed-consumer-12", lawName: "قانون حماية المستهلك الأردني", lawType: "consumer", articleNumber: "المادة 12", title: "حق الإرجاع", content: "يحق للمستهلك إرجاع السلعة أو فسخ العقد خلال 14 يوماً في حال التسوق عن بعد." },
-    { id: "seed-civil-169", lawName: "القانون المدني الأردني", lawType: "civil", articleNumber: "المادة 169", title: "حسن النية", content: "يلتزم المتعاقد بتنفيذ ما اشتمل عليه العقد بحسن نية." },
-  ];
-
-  for (const a of articles) {
-    const text = `${a.lawName} ${a.articleNumber} ${a.title}. ${a.content}`;
+  // ----- Legal corpus (with embeddings) — sourced from data/jordanian-corpus.ts -----
+  console.log(`  • Loading ${CORPUS.length} corpus articles…`);
+  let embedded = 0;
+  for (const a of CORPUS) {
+    const text = `${a.lawName} ${a.articleNumber ?? ""} ${a.title}. ${a.content}`;
     const embedding = await embed(text);
 
     await prisma.legalCorpus.upsert({
       where: { id: a.id },
-      update: {},
-      create: { ...a, metadata: { source: "Jordanian Law", seed: true } },
+      update: {
+        lawName: a.lawName,
+        lawType: a.lawType,
+        articleNumber: a.articleNumber,
+        title: a.title,
+        content: a.content,
+        metadata: a.metadata ?? { source: "manual-curation" } as object,
+      },
+      create: {
+        id: a.id,
+        lawName: a.lawName,
+        lawType: a.lawType,
+        articleNumber: a.articleNumber,
+        title: a.title,
+        content: a.content,
+        metadata: a.metadata ?? { source: "manual-curation" } as object,
+      },
     });
 
     if (embedding && embedding.length === EMBED_DIM) {
@@ -154,11 +165,11 @@ async function main() {
         vec,
         a.id,
       );
-      console.log(`  ✓ embedded ${a.id}`);
-    } else {
-      console.log(`  - ${a.id} (no embedding)`);
+      embedded++;
     }
+    await new Promise((r) => setTimeout(r, SLEEP_MS));
   }
+  console.log(`  ✓ ${embedded}/${CORPUS.length} articles embedded (${describeArticle(CORPUS[0])} … ${describeArticle(CORPUS[CORPUS.length - 1])})`);
 
   console.log("Seed complete.");
 }

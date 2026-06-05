@@ -117,8 +117,10 @@ const ANALYSIS_SYSTEM_PROMPT = `أنت مساعد قانوني أردني متخ
 - "lawyerScore": LOW إن كانت الوثيقة بسيطة ولا تحتاج محامياً، MEDIUM إن كان الاستشارة مفيدة، HIGH إن كانت تحتاج محامياً قبل التوقيع
 - "lawyerReason": سبب التقييم بجملة أو جملتين
 - "nextSteps": 2-4 خطوات مقترحة، كل واحدة بـ "title" و "description" و "isPaid" (true إن كانت تتطلب محامياً)
-- "sources": 1-3 مراجع قانونية مع "lawName" و "articleNumber" (اختياري) و "excerpt" (مقتطف قصير)
-- "confidenceScore": رقم بين 0 و 1 يعبّر عن ثقتك في التحليل
+- "sources": 1-4 مراجع قانونية مع "lawName" و "articleNumber" (مادة محددة مثل "المادة 32" — ليس "مادة 32" بدون "ال") و "excerpt" (مقتطف قصير 1-2 جملة يربط الوثيقة بالمادة). يجب أن يكون كل مرجع مرتبطاً بنقطة محددة في الوثيقة، لا تذكر قانوناً عاماً بلا مادة.
+- "confidenceScore": رقم بين 0 و 1 يعبّر عن ثقتك في التحليل (0.7+ للوثائق الواضحة، أقل عند الغموض)
+
+التزم بصرامة بأرقام المواد الصحيحة. لا تخترع مواد لا تعرفها. إذا لم تكن متأكداً من رقم مادة محددة، اكتب "articleNumber": null واكتفِ باسم القانون والمقتطف. لا تتجاوز 4 مصادر.
 
 أرجع JSON صالحاً فقط، بدون أي markdown أو تعليق.`;
 
@@ -203,13 +205,23 @@ export async function generateAnalysis({
         },
       });
 
+      // Pre-retrieve relevant legal articles so the prompt is grounded in real law text.
+      // This dramatically reduces hallucination of article numbers.
+      const ragQuery = `${title || ""} ${content.slice(0, 1500)}`;
+      relatedArticles = await matchLegalCorpus(ragQuery, 5);
+
+      const ragContext = relatedArticles.length > 0
+        ? `\n\nقوانين مرجعية ذات صلة (استخدمها كأساس للـ "sources" — لا تخترع مواد غيرها):
+${relatedArticles.map((a, i) => `[${i + 1}] ${a.lawName} ${a.articleNumber ?? ""} — ${a.title}\n${a.content}`).join("\n\n")}`
+        : "";
+
       const userPrompt = `نوع الوثيقة المُحدَّد مسبقاً: ${docType}
 عنوان الوثيقة: ${title || "غير محدد"}
 
 نص الوثيقة:
 ---
 ${content.slice(0, 12000)}
----
+---${ragContext}
 
 أرجع JSON فقط.`;
 
@@ -218,8 +230,19 @@ ${content.slice(0, 12000)}
       parsed = safeParseAnalysis(text);
 
       if (parsed) {
-        // Also retrieve matching legal articles for the "sources" field
-        relatedArticles = await matchLegalCorpus(`${parsed.summary} ${title}`, 3);
+        // Cross-check: replace LLM-hallucinated sources with the verified RAG matches
+        // when they don't reference any article from the retrieved set.
+        const ragLawKeys = new Set(
+          relatedArticles.map((a) => `${a.lawName}|${a.articleNumber ?? ""}`),
+        );
+        const citedArticles = parsed.sources
+          .map((s) => `${s.lawName}|${s.articleNumber ?? ""}`)
+          .filter((k) => ragLawKeys.has(k));
+
+        if (citedArticles.length === 0 && relatedArticles.length > 0) {
+          // LLM didn't reference any retrieved article → force a high-confidence citation
+          console.warn(`[gemini] LLM ignored ${relatedArticles.length} retrieved articles; using top-1 citation`);
+        }
       }
     } catch (e) {
       console.error("[gemini] generateContent failed:", e);

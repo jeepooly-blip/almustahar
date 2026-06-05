@@ -18,6 +18,11 @@ CREATE INDEX IF NOT EXISTS "LegalCorpus_embedding_idx"
   ON "LegalCorpus"
   USING hnsw (embedding vector_cosine_ops);
 
+-- 3b. Unique index on (lawName, articleNumber) to prevent duplicate ingest
+-- NULL articleNumber is treated as a distinct value (Postgres standard behaviour)
+CREATE UNIQUE INDEX IF NOT EXISTS "LegalCorpus_law_article_uniq"
+  ON "LegalCorpus" ("lawName", "articleNumber");
+
 -- 4. Helper function: similarity search for legal articles
 -- Cast parameters to int explicitly so Prisma $queryRaw works (it sends bigint for int)
 CREATE OR REPLACE FUNCTION match_legal_corpus(

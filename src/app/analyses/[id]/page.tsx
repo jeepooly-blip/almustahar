@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { mockAnalyses, mockLawyers } from "@/lib/mock-data";
+import { getAnalysisById } from "@/lib/data";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
@@ -9,9 +10,8 @@ import { Accordion } from "@/components/ui/accordion";
 import { LawyerScoreGauge } from "@/components/lawyer-score-gauge";
 import { CheckCircle2, FileText, Gavel, Sparkles, BookOpen, ArrowLeft, ShieldCheck } from "lucide-react";
 
-export function generateStaticParams() {
-  return mockAnalyses.map((a) => ({ id: a.id }));
-}
+// Force dynamic so newly-created analyses are visible immediately
+export const dynamic = "force-dynamic";
 
 export default async function AnalysisPage({
   params,
@@ -19,7 +19,11 @@ export default async function AnalysisPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const analysis = mockAnalyses.find((a) => a.id === id);
+  // Try the real DB first, fall back to in-memory mock
+  let analysis = await getAnalysisById(id);
+  if (!analysis) {
+    analysis = mockAnalyses.find((a) => a.id === id) ?? null;
+  }
   if (!analysis) notFound();
 
   const matchingLawyers = mockLawyers.filter((l) =>

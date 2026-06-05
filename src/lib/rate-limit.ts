@@ -2,7 +2,10 @@ import "server-only";
 
 type Window = { perMinute: number; perHour: number };
 
-type State = { minute: { count: number; resetAt: number }; hour: { count: number; resetAt: number } };
+type State = {
+  minute: { count: number; resetAt: number };
+  hour: { count: number; resetAt: number };
+};
 
 // In-memory store. Works per serverless instance. For multi-region accuracy,
 // swap with Upstash Redis or Vercel KV.
@@ -30,10 +33,20 @@ export function checkRateLimit(key: string, window: Window): RateLimitResult {
   const now = Date.now();
   const minuteWindowMs = 60_000;
   const hourWindowMs = 60 * 60_000;
+
   let s = store.get(key);
-  if (!s || s.minute.resetAt < now) s = { ...s, minute: { count: 0, resetAt: now + minuteWindowMs } } as State;
-  if (!s || s.hour.resetAt < now) s = { ...s, hour: { count: 0, resetAt: now + hourWindowMs } } as State;
-  s = s!;
+  if (!s) {
+    s = {
+      minute: { count: 0, resetAt: now + minuteWindowMs },
+      hour: { count: 0, resetAt: now + hourWindowMs },
+    };
+  }
+  if (s.minute.resetAt < now) {
+    s.minute = { count: 0, resetAt: now + minuteWindowMs };
+  }
+  if (s.hour.resetAt < now) {
+    s.hour = { count: 0, resetAt: now + hourWindowMs };
+  }
 
   s.minute.count += 1;
   s.hour.count += 1;

@@ -12,6 +12,7 @@ import { useLocale } from "@/lib/locale-provider";
 import { useSession } from "@/lib/session-provider";
 import { showToast } from "@/components/ui/toast";
 import { cn, sleep } from "@/lib/utils";
+import { extractPdfText, extractImageText } from "@/lib/pdf-client";
 import {
   Upload,
   FileText,
@@ -63,6 +64,8 @@ function UploadPageInner() {
 
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [extractedText, setExtractedText] = useState<string>("");
+  const [extracting, setExtracting] = useState(false);
   const [docType, setDocType] = useState<DocumentType>("rental");
   const [title, setTitle] = useState("");
   const [consent, setConsent] = useState(false);
@@ -85,8 +88,9 @@ function UploadPageInner() {
     }
   }, [plan, locale]);
 
-  const onSelectFile = useCallback((f: File) => {
+  const onSelectFile = useCallback(async (f: File) => {
     setError(null);
+    setExtractedText("");
     const valid = ["application/pdf", "image/jpeg", "image/png", "image/heic"];
     if (!valid.includes(f.type) && !f.name.match(/\.(pdf|jpg|jpeg|png|heic)$/i)) {
       setError(locale === "ar" ? "نوع ملف غير مدعوم." : "Unsupported file type.");
@@ -105,6 +109,29 @@ function UploadPageInner() {
       setPreview(url);
     } else {
       setPreview(null);
+    }
+
+    // Extract text in the background
+    setExtracting(true);
+    try {
+      const isPdf = f.type === "application/pdf" || /\.pdf$/i.test(f.name);
+      const result = isPdf ? await extractPdfText(f) : await extractImageText(f);
+      if (result.ok && result.text) {
+        setExtractedText(result.text);
+        if (locale === "ar") {
+          showToast({
+            variant: "success",
+            title: "تم استخراج النص",
+            description: `تم استخراج نص من ${result.pageCount} صفحة.`,
+          });
+        }
+      } else if (result.error && result.error !== "image_ocr_not_implemented") {
+        console.warn("Text extraction warning:", result.error);
+      }
+    } catch (e: any) {
+      console.error("Text extraction failed:", e);
+    } finally {
+      setExtracting(false);
     }
   }, [locale, title]);
 
@@ -146,24 +173,74 @@ function UploadPageInner() {
 
     const id = `doc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
-    for (let i = 0; i < STAGES.length; i++) {
-      setCurrentStage(i);
-      await sleep(700 + Math.random() * 600);
+    // Show stages with real progress. We only delay briefly between stages.
+    setCurrentStage(0);
+    await sleep(400);
+    setCurrentStage(1);
+    // If we have extracted text, show it. Otherwise wait briefly.
+    if (extracting) {
+      // Wait for extraction to finish (cap at 8 seconds)
+      const t0 = Date.now();
+      while (extracting && Date.now() - t0 < 8000) await sleep(200);
+    } else if (!extractedText && file) {
+      // Run extraction now (if it wasn't triggered on file select)
+      setExtracting(true);
+      try {
+        const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+        const result = isPdf ? await extractPdfText(file) : await extractImageText(file);
+        if (result.text) setExtractedText(result.text);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setExtracting(false);
+      }
+    }
+    setCurrentStage(2);
+    await sleep(300);
+    setCurrentStage(3);
+    await sleep(300);
+    setCurrentStage(4);
+
+    let res: Response;
+    try {
+      res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id,
+          docType,
+          title,
+          plan,
+          userId: user?.id ?? null,
+          content: extractedText,
+        }),
+      });
+    } catch (e: any) {
+      setError(
+        locale === "ar"
+          ? `خطأ في الاتصال بالخادم: ${e?.message ?? "غير معروف"}`
+          : `Network error: ${e?.message ?? "unknown"}`,
+      );
+      setSubmitting(false);
+      return;
     }
 
-    const res = await fetch("/api/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, docType, title, plan, userId: user?.id ?? null }),
-    });
-
     if (!res.ok) {
-      setError(locale === "ar" ? "فشل التحليل. حاول مرة أخرى." : "Analysis failed. Try again.");
+      let detail = "";
+      try {
+        const j = await res.json();
+        detail = j?.error || j?.details ? `: ${JSON.stringify(j).slice(0, 200)}` : "";
+      } catch { /* not JSON */ }
+      setError(
+        (locale === "ar" ? "فشل التحليل. حاول مرة أخرى." : "Analysis failed. Try again.") +
+          (detail ? ` (${res.status}${detail})` : ` (${res.status})`),
+      );
       setSubmitting(false);
       return;
     }
 
     const { analysisId } = (await res.json()) as { analysisId: string };
+    setCurrentStage(5);
     showToast({
       variant: "success",
       title: locale === "ar" ? "تم التحليل بنجاح" : "Analysis complete",

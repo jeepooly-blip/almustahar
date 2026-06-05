@@ -66,6 +66,7 @@ function UploadPageInner() {
   const [preview, setPreview] = useState<string | null>(null);
   const [extractedText, setExtractedText] = useState<string>("");
   const [extracting, setExtracting] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState<number>(0);
   const [docType, setDocType] = useState<DocumentType>("rental");
   const [title, setTitle] = useState("");
   const [consent, setConsent] = useState(false);
@@ -113,20 +114,32 @@ function UploadPageInner() {
 
     // Extract text in the background
     setExtracting(true);
+    setOcrProgress(0);
     try {
       const isPdf = f.type === "application/pdf" || /\.pdf$/i.test(f.name);
-      const result = isPdf ? await extractPdfText(f) : await extractImageText(f);
+      const result = isPdf
+        ? await extractPdfText(f)
+        : await extractImageText(f, (pct) => setOcrProgress(pct));
       if (result.ok && result.text) {
         setExtractedText(result.text);
         if (locale === "ar") {
           showToast({
             variant: "success",
             title: "تم استخراج النص",
-            description: `تم استخراج نص من ${result.pageCount} صفحة.`,
+            description: isPdf
+              ? `تم استخراج نص من ${result.pageCount} صفحة.`
+              : "تم استخراج النص من الصورة.",
           });
         }
-      } else if (result.error && result.error !== "image_ocr_not_implemented") {
+      } else if (result.error) {
         console.warn("Text extraction warning:", result.error);
+        if (locale === "ar") {
+          showToast({
+            variant: "warning",
+            title: "تعذّر استخراج النص",
+            description: "سيتم استخدام Gemini لتحليل الصورة مباشرة.",
+          });
+        }
       }
     } catch (e: any) {
       console.error("Text extraction failed:", e);
@@ -302,6 +315,8 @@ function UploadPageInner() {
                   <FilePreview
                     file={file}
                     preview={preview}
+                    extracting={extracting}
+                    ocrProgress={ocrProgress}
                     onRemove={(e) => {
                       e.stopPropagation();
                       removeFile();
@@ -518,15 +533,19 @@ function Label({ children }: { children: React.ReactNode }) {
 function FilePreview({
   file,
   preview,
+  extracting,
+  ocrProgress,
   onRemove,
 }: {
   file: File;
   preview: string | null;
+  extracting: boolean;
+  ocrProgress: number;
   onRemove: (e: React.MouseEvent) => void;
 }) {
   const sizeKb = (file.size / 1024).toFixed(0);
   return (
-    <div className="flex w-full items-center gap-4 rounded-xl border border-ink-200 bg-white p-3 text-start">
+      <div className="flex w-full items-center gap-4 rounded-xl border border-ink-200 bg-white p-3 text-start">
       <div className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
         {file.type.startsWith("image/") && preview ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -548,6 +567,12 @@ function FilePreview({
         <div className="text-xs text-ink-500">
           {file.type || "file"} · {sizeKb} KB
         </div>
+        {extracting && file.type.startsWith("image/") && (
+          <div className="mt-1.5 flex items-center gap-2 text-xs text-brand-700">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            جارٍ قراءة النص من الصورة... {ocrProgress > 0 ? `${ocrProgress}%` : ""}
+          </div>
+        )}
       </div>
       <button
         type="button"

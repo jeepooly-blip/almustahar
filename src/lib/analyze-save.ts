@@ -28,16 +28,20 @@ export async function saveAnalysisWithUser(
       return { ok: false, reason: "supabase not configured" };
     }
     try {
+      const now = new Date().toISOString();
       // Ensure document exists
       const docPayload = {
         id: analysis.documentId,
         userId,
         fileUrl: "",
         fileType: "pdf",
+        fileSize: 0,
         title: analysis.documentTitle,
         documentType: analysis.documentType,
         status: "REVIEWED",
         contentExcerpt: (contentExcerpt ?? "").slice(0, 500),
+        createdAt: now,
+        updatedAt: now,
       };
       const { error: docErr } = await supabaseAdmin
         .from("Document")
@@ -61,6 +65,8 @@ export async function saveAnalysisWithUser(
         confidenceScore: analysis.confidenceScore,
         reviewStatus: analysis.reviewStatus,
         rawResponse: { provider: "gemini" },
+        createdAt: now,
+        updatedAt: now,
       };
       const { error: aErr } = await supabaseAdmin
         .from("Analysis")

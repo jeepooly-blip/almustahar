@@ -1,3 +1,4 @@
+import "server-only";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { Analysis, DocumentType, LawyerScore } from "./types";
 import { mockAnalyses, mockDocuments } from "./mock-data";

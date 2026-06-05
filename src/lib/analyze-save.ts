@@ -1,3 +1,4 @@
+import "server-only";
 import { supabaseAdmin, isSupabaseConfigured } from "@/lib/supabase";
 import { prisma } from "@/lib/db";
 import type { Analysis } from "@/lib/types";

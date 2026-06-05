@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { mockAnalyses } from "@/lib/mock-data";
 import { updateAnalysisReview } from "@/lib/data";
+import { getServerSession } from "@/lib/session-server";
 
 const Schema = z.object({
   action: z.enum(["approve", "reject", "flag", "edit"]),
@@ -14,6 +15,11 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    // Auth: only ADMIN or LAWYER can review
+    const user = await getServerSession();
+    if (!user || (user.role !== "ADMIN" && user.role !== "LAWYER")) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    }
     const { id } = await params;
     const body = await req.json();
     const parsed = Schema.safeParse(body);
@@ -26,10 +32,11 @@ export async function POST(
         : parsed.data.action === "reject"
           ? "REJECTED"
           : "FLAGGED";
+    const reviewerId = parsed.data.reviewerId ?? user.id;
     const updated = await updateAnalysisReview(
       id,
       status,
-      parsed.data.reviewerId,
+      reviewerId,
       parsed.data.notes,
     );
     if (!updated) {

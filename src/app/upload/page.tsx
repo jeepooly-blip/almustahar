@@ -97,8 +97,12 @@ function UploadPageInner() {
       setError(locale === "ar" ? "نوع ملف غير مدعوم." : "Unsupported file type.");
       return;
     }
-    if (f.size > 10 * 1024 * 1024) {
-      setError(locale === "ar" ? "الملف أكبر من 10 ميغا." : "File too large (max 10 MB).");
+    if (f.size > 4 * 1024 * 1024) {
+      setError(
+        locale === "ar"
+          ? "الملف أكبر من 4 ميغا. الحد الأقصى 4 ميغابايت."
+          : "File too large (max 4 MB).",
+      );
       return;
     }
     setFile(f);
@@ -237,12 +241,40 @@ function UploadPageInner() {
 
     if (!res.ok) {
       let detail = "";
+      let userMessage = "";
       try {
         const j = await res.json();
+        if (j?.error === "file_too_large") {
+          userMessage =
+            locale === "ar"
+              ? "الملف كبير جداً. الحد الأقصى 4 ميغابايت."
+              : "File too large. Max 4 MB.";
+        } else if (j?.error === "body_parse_failed") {
+          userMessage =
+            locale === "ar"
+              ? "تعذّر قراءة الملف. جرّب ملفاً أصغر (أقل من 4 ميغابايت)."
+              : "Couldn't read the file. Try one under 4 MB.";
+        } else if (j?.error === "rate_limited") {
+          userMessage =
+            locale === "ar"
+              ? "تجاوزت الحد المسموح من الطلبات. انتظر قليلاً."
+              : "Rate limit reached. Wait a moment.";
+        } else if (j?.error === "db_insert_failed") {
+          userMessage =
+            locale === "ar"
+              ? "تعذّر حفظ النتيجة. حاول مرة أخرى."
+              : "Couldn't save the result. Try again.";
+        } else if (j?.error === "unsupported_file_type") {
+          userMessage =
+            locale === "ar"
+              ? "نوع الملف غير مدعوم. استخدم PDF أو صورة."
+              : "Unsupported file type. Use PDF or image.";
+        }
         detail = j?.error || j?.details ? `: ${JSON.stringify(j).slice(0, 200)}` : "";
       } catch { /* not JSON */ }
       setError(
-        (locale === "ar" ? "فشل التحليل. حاول مرة أخرى." : "Analysis failed. Try again.") +
+        userMessage ||
+          (locale === "ar" ? "فشل التحليل. حاول مرة أخرى." : "Analysis failed. Try again.") +
           (detail ? ` (${res.status}${detail})` : ` (${res.status})`),
       );
       setSubmitting(false);

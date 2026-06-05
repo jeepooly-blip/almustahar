@@ -25,10 +25,20 @@ const ALLOWED_MIME = new Set([
   "image/png",
   "image/heic",
 ]);
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+// Vercel Hobby plan caps serverless request bodies at 4.5 MB.
+const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4 MB
 
 export async function POST(req: Request) {
   try {
+    // Reject oversized uploads BEFORE parsing formData (Vercel Hobby body limit is 4.5MB).
+    const contentLength = parseInt(req.headers.get("content-length") ?? "0", 10);
+    if (contentLength > MAX_FILE_SIZE + 4096) {
+      return NextResponse.json(
+        { error: "file_too_large", maxBytes: MAX_FILE_SIZE, gotBytes: contentLength },
+        { status: 413 },
+      );
+    }
+
     // Rate limit by IP (10/min, 100/hour)
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
     const rl = checkRateLimit(`analyze:${ip}`, { perMinute: 10, perHour: 100 });
@@ -41,11 +51,19 @@ export async function POST(req: Request) {
 
     const contentType = req.headers.get("content-type") ?? "";
 
-    // Two modes: JSON (current) or multipart/form-data (new, with file upload)
+    // Two modes: JSON (text-only) or multipart/form-data (with file upload)
     let body: z.infer<typeof RequestSchema>;
     let file: File | null = null;
     if (contentType.startsWith("multipart/form-data")) {
-      const form = await req.formData();
+      let form: FormData;
+      try {
+        form = await req.formData();
+      } catch (e: any) {
+        return NextResponse.json(
+          { error: "body_parse_failed", hint: "File may be too large for the server (max 4 MB on Hobby plan).", reason: e?.message },
+          { status: 413 },
+        );
+      }
       const parsed = RequestSchema.safeParse({
         id: form.get("id"),
         docType: form.get("docType"),
@@ -64,7 +82,7 @@ export async function POST(req: Request) {
           return NextResponse.json({ error: "unsupported_file_type", got: f.type }, { status: 400 });
         }
         if (f.size > MAX_FILE_SIZE) {
-          return NextResponse.json({ error: "file_too_large", sizeBytes: f.size }, { status: 400 });
+          return NextResponse.json({ error: "file_too_large", maxBytes: MAX_FILE_SIZE, gotBytes: f.size }, { status: 413 });
         }
         file = f;
       }
@@ -121,6 +139,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ analysisId: analysis.id, provider, storagePath });
   } catch (e) {
     console.error("Analyze error:", e);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    const message = e instanceof Error ? e.message : String(e);
+    return NextResponse.json(
+      { error: "internal_error", reason: message.slice(0, 200) },
+      { status: 500 },
+    );
   }
 }

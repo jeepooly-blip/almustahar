@@ -27,7 +27,7 @@ export async function POST(req: Request) {
       id,
       docType: docType as DocumentType,
       title: title ?? "",
-      content,
+      content: content ?? undefined,
     });
 
     if (process.env.DATABASE_URL) {

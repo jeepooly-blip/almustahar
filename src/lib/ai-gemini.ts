@@ -185,7 +185,7 @@ export async function generateAnalysis({
   id: string;
   docType: DocumentType;
   title: string;
-  content?: string;
+  content?: string | null;
 }): Promise<Analysis> {
   // ----- 1. Generate real analysis via Gemini (if configured) -----
   let parsed: GeminiAnalysisOutput | null = null;

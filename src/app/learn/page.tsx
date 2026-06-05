@@ -31,17 +31,20 @@ const ICONS: Record<LearnCategory, typeof Home> = {
 type SP = { [key: string]: string | string[] | undefined };
 function asArray(v: string | string[] | undefined): string[] {
   if (!v) return [];
-  return Array.isArray(v) ? v : [v];
+  if (Array.isArray(v)) return v;
+  // Tolerate accidental comma-joined values (e.g. "?cat=a,b") — split on comma
+  // so older shared links still work.
+  return v.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
-function toggleParam(current: string[], value: string): string {
+function toggleParam(current: string[], value: string): string[] {
   const set = new Set(current);
   if (set.has(value)) set.delete(value);
   else set.add(value);
-  return Array.from(set).join(",");
+  return Array.from(set);
 }
 
-function buildHref(sp: SP, changes: Record<string, string | undefined>): string {
+function buildHref(sp: SP, changes: Record<string, string | string[] | undefined>): string {
   const next = new URLSearchParams();
   const merged: Record<string, string[]> = {};
   for (const [k, v] of Object.entries(sp)) {
@@ -51,7 +54,8 @@ function buildHref(sp: SP, changes: Record<string, string | undefined>): string 
   }
   for (const [k, v] of Object.entries(changes)) {
     if (v === undefined) continue;
-    if (v) merged[k] = [v];
+    const arr = Array.isArray(v) ? v : asArray(v);
+    if (arr.length) merged[k] = arr;
   }
   for (const [k, arr] of Object.entries(merged)) {
     for (const item of arr) next.append(k, item);

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { mockAnalyses, mockLawyers } from "@/lib/mock-data";
 import { getAnalysisById } from "@/lib/data";
+import type { Analysis } from "@/lib/types";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
@@ -12,6 +13,60 @@ import { CheckCircle2, FileText, Gavel, Sparkles, BookOpen, ArrowLeft, ShieldChe
 
 // Force dynamic so newly-created analyses are visible immediately
 export const dynamic = "force-dynamic";
+// Don't try to statically generate any analysis pages
+export const dynamicParams = true;
+
+async function fetchAnalysisDirectly(id: string): Promise<Analysis | null> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  console.log(`[analysis-page] fetch id=${id} url=${url} keySet=${Boolean(key)}`);
+  if (!url || !key) return null;
+  try {
+    const r = await fetch(
+      `${url}/rest/v1/Analysis?id=eq.${encodeURIComponent(id)}&select=*`,
+      {
+        headers: {
+          apikey: key,
+          Authorization: `Bearer ${key}`,
+        },
+        cache: "no-store",
+      },
+    );
+    console.log(`[analysis-page] status=${r.status}`);
+    if (!r.ok) {
+      const text = await r.text();
+      console.log(`[analysis-page] error body: ${text.slice(0, 200)}`);
+      return null;
+    }
+    const rows = (await r.json()) as any[];
+    console.log(`[analysis-page] rows returned: ${rows.length}`);
+    if (rows.length === 0) return null;
+    const row = rows[0];
+    return {
+      id: row.id,
+      documentId: row.documentId,
+      userId: row.userId,
+      documentType: row.documentType,
+      documentTitle: row.documentTitle,
+      summary: row.summary,
+      rights: row.rights ?? [],
+      obligations: row.obligations ?? [],
+      risks: row.risks ?? [],
+      lawyerScore: row.lawyerScore,
+      lawyerReason: row.lawyerReason,
+      nextSteps: row.nextSteps ?? [],
+      sources: row.sources ?? [],
+      confidenceScore: row.confidenceScore ?? 0.85,
+      reviewStatus: row.reviewStatus ?? "PENDING",
+      reviewedBy: row.reviewedById ?? undefined,
+      reviewNotes: row.reviewNotes ?? undefined,
+      createdAt: row.createdAt,
+    };
+  } catch (e: any) {
+    console.log(`[analysis-page] fetch threw: ${e?.message}`);
+    return null;
+  }
+}
 
 export default async function AnalysisPage({
   params,
@@ -19,11 +74,13 @@ export default async function AnalysisPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  // Try the real DB first, fall back to in-memory mock
-  let analysis = await getAnalysisById(id);
-  if (!analysis) {
-    analysis = mockAnalyses.find((a) => a.id === id) ?? null;
-  }
+  console.log(`[analysis-page] rendering id=${id}`);
+  // Direct fetch to Supabase REST API (works from Vercel serverless)
+  let analysis = await fetchAnalysisDirectly(id);
+  // Fall back to data layer (Prisma or supabase-js client)
+  if (!analysis) analysis = await getAnalysisById(id);
+  // Last resort: in-memory mock
+  if (!analysis) analysis = mockAnalyses.find((a) => a.id === id) ?? null;
   if (!analysis) notFound();
 
   const matchingLawyers = mockLawyers.filter((l) =>

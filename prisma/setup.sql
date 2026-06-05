@@ -7,9 +7,11 @@
 -- 1. Enable pgvector extension
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- 2. Add embedding column to LegalCorpus (Prisma doesn't know about vectors)
-ALTER TABLE "LegalCorpus"
-  ADD COLUMN IF NOT EXISTS embedding vector(1536);
+-- 2. Recreate embedding column at 768-dim (matches Google gemini-embedding-001)
+-- Drop the old column (and any old index) first to allow re-adding with new dim
+DROP INDEX IF EXISTS "LegalCorpus_embedding_idx";
+ALTER TABLE "LegalCorpus" DROP COLUMN IF EXISTS embedding;
+ALTER TABLE "LegalCorpus" ADD COLUMN embedding vector(768);
 
 -- 3. HNSW index for fast cosine similarity search
 CREATE INDEX IF NOT EXISTS "LegalCorpus_embedding_idx"
@@ -17,9 +19,10 @@ CREATE INDEX IF NOT EXISTS "LegalCorpus_embedding_idx"
   USING hnsw (embedding vector_cosine_ops);
 
 -- 4. Helper function: similarity search for legal articles
+-- Cast parameters to int explicitly so Prisma $queryRaw works (it sends bigint for int)
 CREATE OR REPLACE FUNCTION match_legal_corpus(
-  query_embedding vector(1536),
-  match_threshold float DEFAULT 0.7,
+  query_embedding vector(768),
+  match_threshold float DEFAULT 0.5,
   match_count int DEFAULT 8
 )
 RETURNS TABLE (

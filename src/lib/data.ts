@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "./db";
+import { supabaseAdmin, isSupabaseConfigured } from "./supabase";
 import { mockAnalyses, mockLawyers, mockDocuments, mockLeads, mockUsers } from "./mock-data";
 import type { Analysis, Document, DocumentType, LawyerProfile, Lead } from "./types";
 
@@ -8,23 +9,60 @@ import type { Analysis, Document, DocumentType, LawyerProfile, Lead } from "./ty
  * Data access layer. Falls back to in-memory mock data when DATABASE_URL is not configured
  * (e.g. local dev or Vercel preview without a database). Once Supabase is wired up,
  * these functions return real data.
+ *
+ * For reads, when the Supabase REST API is available, we also fall back to it
+ * (PostgREST over HTTPS) if Prisma can't reach the DB (e.g. Vercel serverless
+ * where direct TCP to Supabase is blocked).
  */
 
 const useDatabase = Boolean(process.env.DATABASE_URL);
 
+async function fetchAnalysisByIdViaRest(id: string): Promise<Analysis | null> {
+  if (!isSupabaseConfigured || !supabaseAdmin) return null;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("Analysis")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+    if (error || !data) return null;
+    return rowToAnalysis(data);
+  } catch {
+    return null;
+  }
+}
+
 export async function getAnalyses(userId: string): Promise<Analysis[]> {
   if (!useDatabase) return mockAnalyses.filter((a) => a.userId === userId);
-  const rows = await prisma.analysis.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-  });
-  return rows.map(rowToAnalysis);
+  try {
+    const rows = await prisma.analysis.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+    });
+    return rows.map(rowToAnalysis);
+  } catch (e) {
+    // Fallback to REST
+    if (isSupabaseConfigured && supabaseAdmin) {
+      const { data, error } = await supabaseAdmin
+        .from("Analysis")
+        .select("*")
+        .eq("userId", userId)
+        .order("createdAt", { ascending: false });
+      if (!error && data) return data.map(rowToAnalysis);
+    }
+    throw e;
+  }
 }
 
 export async function getAnalysisById(id: string): Promise<Analysis | null> {
   if (!useDatabase) return mockAnalyses.find((a) => a.id === id) ?? null;
-  const row = await prisma.analysis.findUnique({ where: { id } });
-  return row ? rowToAnalysis(row) : null;
+  try {
+    const row = await prisma.analysis.findUnique({ where: { id } });
+    return row ? rowToAnalysis(row) : null;
+  } catch {
+    // Fallback to REST (works from Vercel serverless)
+    return fetchAnalysisByIdViaRest(id);
+  }
 }
 
 export async function getDocuments(userId: string): Promise<Document[]> {

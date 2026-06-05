@@ -8,10 +8,10 @@ import type { DocumentType } from "@/lib/types";
 const RequestSchema = z.object({
   id: z.string(),
   docType: z.enum(["rental", "employment", "traffic", "consumer", "general"]),
-  title: z.string().optional(),
-  plan: z.string().optional(),
-  userId: z.string().optional(),
-  content: z.string().optional(), // extracted text from the document
+  title: z.string().nullish(),
+  plan: z.string().nullish(),
+  userId: z.string().nullish(),
+  content: z.string().nullish(), // extracted text from the document
 });
 
 export async function POST(req: Request) {

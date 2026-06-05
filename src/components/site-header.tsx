@@ -40,9 +40,9 @@ export function SiteHeader() {
 
   const dashboardHref =
     user?.role === "LAWYER"
-      ? "/lawyer/dashboard"
+      ? "/dashboard/lawyer"
       : user?.role === "ADMIN"
-        ? "/admin"
+        ? "/dashboard/lawyer"
         : "/dashboard";
 
   return (
@@ -124,7 +124,7 @@ export function SiteHeader() {
                       </Link>
                       {user.role === "LAWYER" && (
                         <Link
-                          href="/lawyer/dashboard"
+                          href="/dashboard/lawyer"
                           className="flex items-center gap-2 px-4 py-2 text-sm text-ink-700 hover:bg-ink-50"
                           onClick={() => setUserMenu(false)}
                         >
@@ -134,7 +134,7 @@ export function SiteHeader() {
                       )}
                       {user.role === "ADMIN" && (
                         <Link
-                          href="/admin"
+                          href="/dashboard/lawyer"
                           className="flex items-center gap-2 px-4 py-2 text-sm text-ink-700 hover:bg-ink-50"
                           onClick={() => setUserMenu(false)}
                         >

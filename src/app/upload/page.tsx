@@ -216,18 +216,15 @@ function UploadPageInner() {
 
     let res: Response;
     try {
-      res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id,
-          docType,
-          title,
-          plan,
-          userId: user?.id ?? null,
-          content: extractedText,
-        }),
-      });
+      const form = new FormData();
+      form.append("id", id);
+      form.append("docType", docType);
+      form.append("title", title);
+      if (plan) form.append("plan", plan);
+      if (user?.id) form.append("userId", user.id);
+      form.append("content", extractedText);
+      if (file) form.append("file", file, file.name);
+      res = await fetch("/api/analyze", { method: "POST", body: form });
     } catch (e: any) {
       setError(
         locale === "ar"

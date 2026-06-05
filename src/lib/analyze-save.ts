@@ -18,6 +18,7 @@ export async function saveAnalysisWithUser(
   analysis: Analysis,
   userHint: { userId?: string | null; demoPhone?: string },
   contentExcerpt: string,
+  fileUrl: string | null = null,
 ): Promise<SaveResult> {
   // 1) Resolve a real user id (reuse prisma's upsert — fast & uses the same connection)
   let realUserId = userHint.userId ?? null;
@@ -34,7 +35,7 @@ export async function saveAnalysisWithUser(
       const docPayload = {
         id: analysis.documentId,
         userId,
-        fileUrl: "",
+        fileUrl: fileUrl ?? "",
         fileType: "pdf",
         fileSize: 0,
         title: analysis.documentTitle,

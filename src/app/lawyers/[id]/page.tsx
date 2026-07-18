@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import { mockLawyers, specialtyLabels, cityLabels, mockAnalyses } from "@/lib/mock-data";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -41,10 +42,11 @@ export default async function LawyerProfilePage({
       <Card>
         <CardBody>
           <div className="flex flex-col items-start gap-6 md:flex-row">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <Image
               src={lawyer.avatar}
               alt={lawyer.name}
+              width={112}
+              height={112}
               className="h-28 w-28 rounded-2xl border-4 border-white object-cover shadow-md"
             />
             <div className="flex-1">

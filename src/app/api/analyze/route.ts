@@ -4,6 +4,7 @@ import { generateAnalysis, isGeminiConfigured } from "@/lib/ai-gemini";
 import { saveAnalysisWithUser } from "@/lib/analyze-save";
 import { uploadDocument } from "@/lib/storage";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { verifySession } from "@/lib/auth";
 import { z } from "zod";
 import type { DocumentType } from "@/lib/types";
 
@@ -15,7 +16,6 @@ const RequestSchema = z.object({
   docType: z.enum(["rental", "employment", "traffic", "consumer", "general"]),
   title: z.string().nullish(),
   plan: z.string().nullish(),
-  userId: z.string().nullish(),
   content: z.string().nullish(),
 });
 
@@ -30,6 +30,13 @@ const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4 MB
 
 export async function POST(req: Request) {
   try {
+    // ---- Authentication: userId comes from the session, NOT the request body ----
+    const session = await verifySession();
+    if (!session) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    }
+    const userId = session.id;
+
     // Reject oversized uploads BEFORE parsing formData (Vercel Hobby body limit is 4.5MB).
     const contentLength = parseInt(req.headers.get("content-length") ?? "0", 10);
     if (contentLength > MAX_FILE_SIZE + 4096) {
@@ -39,9 +46,8 @@ export async function POST(req: Request) {
       );
     }
 
-    // Rate limit by IP (10/min, 100/hour)
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-    const rl = checkRateLimit(`analyze:${ip}`, { perMinute: 10, perHour: 100 });
+    // Rate limit by user ID (not IP) for authenticated users
+    const rl = checkRateLimit(`analyze:${userId}`, { perMinute: 10, perHour: 100 });
     if (!rl.allowed) {
       return NextResponse.json(
         { error: "rate_limited", retryAfter: rl.retryAfter },
@@ -58,9 +64,10 @@ export async function POST(req: Request) {
       let form: FormData;
       try {
         form = await req.formData();
-      } catch (e: any) {
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
         return NextResponse.json(
-          { error: "body_parse_failed", hint: "File may be too large for the server (max 4 MB on Hobby plan).", reason: e?.message },
+          { error: "body_parse_failed", hint: "File may be too large for the server (max 4 MB on Hobby plan).", reason: message },
           { status: 413 },
         );
       }
@@ -69,7 +76,6 @@ export async function POST(req: Request) {
         docType: form.get("docType"),
         title: form.get("title"),
         plan: form.get("plan"),
-        userId: form.get("userId"),
         content: form.get("content"),
       });
       if (!parsed.success) {
@@ -95,13 +101,14 @@ export async function POST(req: Request) {
       body = parsed.data;
     }
 
-    const { id, docType, title, userId, content } = body;
+    const { id, docType, title, content } = body;
 
     const analysis = await generateAnalysis({
       id,
       docType: docType as DocumentType,
       title: title ?? "",
       content: content ?? undefined,
+      userId,
     });
 
     const provider = isGeminiConfigured() ? "gemini" : "mock";
@@ -109,14 +116,14 @@ export async function POST(req: Request) {
     // If a file was uploaded, try to store it
     let storagePath: string | null = null;
     if (file) {
-      const up = await uploadDocument(analysis.userId || "anon", analysis.documentId, file, file.type);
+      const up = await uploadDocument(analysis.userId || userId, analysis.documentId, file, file.type);
       storagePath = up?.path ?? null;
     }
 
     if (process.env.DATABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL) {
       const saveRes = await saveAnalysisWithUser(
         analysis,
-        { userId: userId ?? null, demoPhone: "+962791234567" },
+        { userId, demoPhone: session.phone },
         content ?? "",
         storagePath,
       );
@@ -128,7 +135,6 @@ export async function POST(req: Request) {
           storagePath,
         });
       }
-      console.error("SAVE_FAILED:", saveRes.reason);
       return NextResponse.json(
         { error: "db_insert_failed", reason: saveRes.reason, code: saveRes.code, analysisId: analysis.id, provider },
         { status: 500 },
@@ -138,10 +144,9 @@ export async function POST(req: Request) {
     mockAnalyses.unshift(analysis);
     return NextResponse.json({ analysisId: analysis.id, provider, storagePath });
   } catch (e) {
-    console.error("Analyze error:", e);
     const message = e instanceof Error ? e.message : String(e);
     return NextResponse.json(
-      { error: "internal_error", reason: message.slice(0, 200) },
+      { error: "internal_error" },
       { status: 500 },
     );
   }

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { mockLawyers, specialtyLabels, cityLabels } from "@/lib/mock-data";
 import { Card, CardBody } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -252,11 +253,12 @@ async function LawyersPageInner({
           {filtered.map((l) => (
             <Card key={l.id} className="group flex flex-col overflow-hidden">
               <div className="flex items-start gap-3 border-b border-ink-100 p-5">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                <Image
                   src={l.avatar}
                   alt={l.name}
-                  className="h-14 w-14 rounded-full border-2 border-white object-cover shadow-sm"
+                  width={64}
+                  height={64}
+                  className="h-16 w-16 rounded-full object-cover"
                 />
                 <div className="flex-1">
                   <div className="flex items-center gap-1.5">

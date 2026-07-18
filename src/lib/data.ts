@@ -3,7 +3,7 @@ import "server-only";
 import { prisma } from "./db";
 import { supabaseAdmin, isSupabaseConfigured } from "./supabase";
 import { mockAnalyses, mockLawyers, mockDocuments, mockLeads, mockUsers } from "./mock-data";
-import type { Analysis, Document, DocumentType, LawyerProfile, Lead } from "./types";
+import type { Analysis, Document, DocumentType, DocStatus, LawyerProfile, Lead, LawyerScore, ReviewStatus, LeadStatus } from "./types";
 
 /**
  * Data access layer. Falls back to in-memory mock data when DATABASE_URL is not configured
@@ -75,8 +75,8 @@ export async function getDocuments(userId: string): Promise<Document[]> {
     fileType: r.fileType as "pdf" | "image",
     fileSize: r.fileSize,
     title: r.title,
-    documentType: r.documentType as unknown as DocumentType,
-    status: r.status as unknown as Document["status"],
+    documentType: r.documentType as DocumentType,
+    status: r.status as DocStatus,
     contentExcerpt: r.contentExcerpt ?? "",
     createdAt: r.createdAt.toISOString(),
   }));
@@ -94,7 +94,7 @@ export async function getLawyers(opts?: {
     if (opts?.verifiedOnly) list = list.filter((l) => l.verified);
     return list;
   }
-  return prisma.lawyerProfile.findMany({
+  const rows = await prisma.lawyerProfile.findMany({
     where: {
       ...(opts?.verifiedOnly ? { verified: true } : {}),
       ...(opts?.specialty ? { specialties: { has: opts.specialty } } : {}),
@@ -102,12 +102,14 @@ export async function getLawyers(opts?: {
     },
     orderBy: [{ rating: "desc" }, { totalReviews: "desc" }],
     include: { user: true },
-  }) as unknown as LawyerProfile[];
+  });
+  return rows.map(mapLawyerRow);
 }
 
 export async function getLawyerById(id: string): Promise<LawyerProfile | null> {
   if (!useDatabase) return mockLawyers.find((l) => l.id === id) ?? null;
-  return prisma.lawyerProfile.findUnique({ where: { id }, include: { user: true } }) as unknown as LawyerProfile | null;
+  const row = await prisma.lawyerProfile.findUnique({ where: { id }, include: { user: true } });
+  return row ? mapLawyerRow(row) : null;
 }
 
 export async function getLeadsForUser(userId: string): Promise<Lead[]> {
@@ -123,10 +125,10 @@ export async function getLeadsForUser(userId: string): Promise<Lead[]> {
     userName: r.user.name,
     lawyerId: r.lawyerId,
     analysisId: r.analysisId ?? undefined,
-    documentType: r.documentType as unknown as DocumentType,
+    documentType: r.documentType as DocumentType,
     message: r.message,
     feeOffered: r.feeOffered ?? undefined,
-    status: r.status as unknown as Lead["status"],
+    status: r.status as LeadStatus,
     createdAt: r.createdAt.toISOString(),
   }));
 }
@@ -144,10 +146,10 @@ export async function getLeadsForLawyer(lawyerId: string): Promise<Lead[]> {
     userName: r.user.name,
     lawyerId: r.lawyerId,
     analysisId: r.analysisId ?? undefined,
-    documentType: r.documentType as unknown as DocumentType,
+    documentType: r.documentType as DocumentType,
     message: r.message,
     feeOffered: r.feeOffered ?? undefined,
-    status: r.status as unknown as Lead["status"],
+    status: r.status as LeadStatus,
     createdAt: r.createdAt.toISOString(),
   }));
 }
@@ -168,7 +170,7 @@ export async function createLead(data: Omit<Lead, "id" | "createdAt" | "status">
       userId: data.userId,
       lawyerId: data.lawyerId,
       analysisId: data.analysisId,
-      documentType: data.documentType as any,
+      documentType: data.documentType,
       message: data.message,
       feeOffered: data.feeOffered,
       status: "PENDING",
@@ -180,10 +182,10 @@ export async function createLead(data: Omit<Lead, "id" | "createdAt" | "status">
     userName: data.userName,
     lawyerId: created.lawyerId,
     analysisId: created.analysisId ?? undefined,
-    documentType: created.documentType as unknown as DocumentType,
+    documentType: created.documentType as DocumentType,
     message: created.message,
     feeOffered: created.feeOffered ?? undefined,
-    status: created.status as unknown as Lead["status"],
+    status: created.status as LeadStatus,
     createdAt: created.createdAt.toISOString(),
   };
 }
@@ -212,31 +214,75 @@ export async function updateAnalysisReview(
     }
     return a ?? null;
   }
-  return prisma.analysis.update({
+  const updated = await prisma.analysis.update({
     where: { id },
     data: { reviewStatus: status, reviewedById: reviewerId, reviewNotes: notes, reviewedAt: new Date() },
-  }) as unknown as Analysis;
+  });
+  return rowToAnalysis(updated);
 }
 
-function rowToAnalysis(row: any): Analysis {
+function rowToAnalysis(row: {
+  id: string;
+  documentId: string;
+  userId: string;
+  documentType: string;
+  documentTitle: string;
+  summary: string;
+  rights: unknown;
+  obligations: unknown;
+  risks: unknown;
+  lawyerScore: string;
+  lawyerReason: string;
+  nextSteps: unknown;
+  sources: unknown;
+  confidenceScore: number;
+  reviewStatus: string;
+  reviewedById: string | null;
+  reviewNotes: string | null;
+  createdAt: Date;
+}): Analysis {
   return {
     id: row.id,
     documentId: row.documentId,
     userId: row.userId,
-    documentType: row.documentType,
+    documentType: row.documentType as DocumentType,
     documentTitle: row.documentTitle,
     summary: row.summary,
-    rights: row.rights ?? [],
-    obligations: row.obligations ?? [],
-    risks: row.risks ?? [],
-    lawyerScore: row.lawyerScore,
+    rights: (Array.isArray(row.rights) ? row.rights : []) as string[],
+    obligations: (Array.isArray(row.obligations) ? row.obligations : []) as string[],
+    risks: (Array.isArray(row.risks) ? row.risks : []) as Analysis["risks"],
+    lawyerScore: row.lawyerScore as LawyerScore,
     lawyerReason: row.lawyerReason,
-    nextSteps: row.nextSteps ?? [],
-    sources: row.sources ?? [],
+    nextSteps: (Array.isArray(row.nextSteps) ? row.nextSteps : []) as Analysis["nextSteps"],
+    sources: (Array.isArray(row.sources) ? row.sources : []) as Analysis["sources"],
     confidenceScore: row.confidenceScore,
-    reviewStatus: row.reviewStatus,
-    reviewedBy: row.reviewedById,
-    reviewNotes: row.reviewNotes,
+    reviewStatus: row.reviewStatus as ReviewStatus,
+    reviewedBy: row.reviewedById ?? undefined,
+    reviewNotes: row.reviewNotes ?? undefined,
     createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function mapLawyerRow(row: { id: string; userId: string; barNumber: string; bio: unknown; specialties: unknown; cities: unknown; hourlyRate: number; yearsExperience: number; successStories: number; languages: unknown; verified: boolean; isAvailable: boolean; rating: number; totalReviews: number; avatarUrl: string | null; isFeatured: boolean; subscriptionTier: string | null; user: { name: string; phone: string } }): LawyerProfile {
+  const bio = (typeof row.bio === "object" && row.bio !== null && "ar" in row.bio)
+    ? row.bio as { ar: string; en: string }
+    : { ar: "", en: "" };
+  return {
+    id: row.id,
+    userId: row.userId,
+    name: row.user.name,
+    avatar: row.avatarUrl ?? "/favicon.svg",
+    specialties: Array.isArray(row.specialties) ? row.specialties : [],
+    cities: Array.isArray(row.cities) ? row.cities : [],
+    hourlyRate: row.hourlyRate,
+    bio,
+    verified: row.verified,
+    rating: row.rating,
+    totalReviews: row.totalReviews,
+    barNumber: row.barNumber,
+    isAvailable: row.isAvailable,
+    languages: Array.isArray(row.languages) ? row.languages : ["ar" as const],
+    yearsExperience: row.yearsExperience,
+    successStories: row.successStories,
   };
 }

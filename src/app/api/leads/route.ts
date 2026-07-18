@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createLead } from "@/lib/data";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { verifySession } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 const Schema = z.object({
   lawyerId: z.string(),
+  documentType: z.enum(["rental", "employment", "traffic", "consumer", "general"]).default("general"),
   message: z.string().min(5),
   feeOffered: z.number().min(0).optional(),
   attachAnalysis: z.boolean().optional(),
@@ -18,12 +20,17 @@ const Schema = z.object({
     })
     .nullable()
     .optional(),
-  userId: z.string().optional(),
   userName: z.string().optional(),
 });
 
 export async function POST(req: Request) {
   try {
+    // ---- Authentication required ----
+    const session = await verifySession();
+    if (!session) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    }
+
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
     const rl = checkRateLimit(`leads:${ip}`, { perMinute: 3, perHour: 20 });
     if (!rl.allowed) {
@@ -36,14 +43,15 @@ export async function POST(req: Request) {
     const body = await req.json();
     const parsed = Schema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: "invalid_request" }, { status: 400 });
+      return NextResponse.json({ error: "invalid_request", details: parsed.error.flatten() }, { status: 400 });
     }
-    const { lawyerId, message, feeOffered, analysisContext, userId, userName } = parsed.data;
+    const { lawyerId, documentType, message, feeOffered, analysisContext, userName } = parsed.data;
+
     const lead = await createLead({
-      userId: userId ?? "u1",
-      userName: userName ?? "مستخدم",
+      userId: session.id,
+      userName: userName ?? session.name,
       lawyerId,
-      documentType: "rental",
+      documentType,
       message,
       feeOffered,
       analysisId: analysisContext?.id,

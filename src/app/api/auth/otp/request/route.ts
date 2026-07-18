@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { supabaseAdmin } from "@/lib/supabase";
 
 const Schema = z.object({
   phone: z.string().min(8),
@@ -29,12 +28,14 @@ export async function POST(req: Request) {
     // In production, send SMS via Twilio/Vonage here:
     // if (process.env.TWILIO_ACCOUNT_SID) { ... }
 
-    // In dev, surface the code in the response for easy testing
+    // Dev code is ONLY logged to server-side console — never sent to the client.
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`[DEV OTP] Phone: ${phone}, Code: ${code}`);
+    }
+
     return NextResponse.json({
       ok: true,
       phone,
-      // Remove this in production — code should only come via SMS
-      devCode: process.env.NODE_ENV === "production" ? undefined : code,
     });
   } catch (e) {
     console.error("OTP request error:", e);

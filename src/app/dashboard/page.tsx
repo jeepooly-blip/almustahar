@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { getServerSession } from "@/lib/session-server";
+import { getAnalyses, getDocuments, getLeadsForUser } from "@/lib/data";
 import { mockAnalyses, mockDocuments, mockLeads } from "@/lib/mock-data";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getServerSession } from "@/lib/session-server";
 import {
   FileText,
   FileCheck2,
@@ -20,17 +20,32 @@ import {
 
 export default async function DashboardPage() {
   const session = await getServerSession();
-  if (!session) {
-    // For demo, allow access but show a banner prompting to log in
+  const userId = session?.id ?? "u1"; // Fallback for demo without DB
+  const userName = session?.name ?? "زائر";
+
+  // Try real data first, fall back to mock
+  let docs = mockDocuments.filter((d) => d.userId === userId);
+  let analyses = mockAnalyses.filter((a) => a.userId === userId);
+  let leads = mockLeads.filter((l) => l.userId === userId);
+
+  if (session) {
+    try {
+      const [realDocs, realAnalyses, realLeads] = await Promise.all([
+        getDocuments(userId),
+        getAnalyses(userId),
+        getLeadsForUser(userId),
+      ]);
+      if (realDocs.length > 0) docs = realDocs;
+      if (realAnalyses.length > 0) analyses = realAnalyses;
+      if (realLeads.length > 0) leads = realLeads;
+    } catch {
+      // Use mock data as fallback
+    }
   }
-  const userId = "u1";
-  const docs = mockDocuments.filter((d) => d.userId === userId);
-  const analyses = mockAnalyses.filter((a) => a.userId === userId);
-  const leads = mockLeads.filter((l) => l.userId === userId);
 
   return (
     <DashboardContent
-      userName="سامي العلي"
+      userName={userName}
       docs={docs}
       analyses={analyses}
       leads={leads}
@@ -100,7 +115,7 @@ function DashboardContent({
             icon={<FileCheck2 className="h-5 w-5" />}
             title="آخر التحليلات"
             action={
-              <Link href="#" className="text-xs font-semibold text-brand-700 hover:underline">
+              <Link href="/analyses" className="text-xs font-semibold text-brand-700 hover:underline">
                 عرض الكل
               </Link>
             }
@@ -119,7 +134,7 @@ function DashboardContent({
                 }
               />
             ) : (
-              analyses.map((a) => (
+              analyses.slice(0, 5).map((a) => (
                 <Link
                   key={a.id}
                   href={`/analyses/${a.id}`}
@@ -166,7 +181,7 @@ function DashboardContent({
             {leads.length === 0 ? (
               <p className="text-sm text-ink-500">لا توجد طلبات بعد.</p>
             ) : (
-              leads.map((l) => (
+              leads.slice(0, 5).map((l) => (
                 <div key={l.id} className="rounded-xl border border-ink-200 p-3">
                   <div className="flex items-center justify-between">
                     <Badge
@@ -210,9 +225,9 @@ function DashboardContent({
         />
         <CardBody>
           <div className="grid gap-3 sm:grid-cols-3">
-            <UsageItem label="تحليلات" used={3} total={3} />
-            <UsageItem label="صفحات PDF مُصدَّرة" used={1} total={5} />
-            <UsageItem label="طلبات محامين" used={2} total={10} />
+            <UsageItem label="تحليلات" used={analyses.length} total={3} />
+            <UsageItem label="صفحات PDF مُصدَّرة" used={docs.filter((d) => d.fileType === "pdf").length} total={5} />
+            <UsageItem label="طلبات محامين" used={leads.length} total={10} />
           </div>
         </CardBody>
       </Card>
@@ -294,5 +309,3 @@ function EmptyState({
     </div>
   );
 }
-
-

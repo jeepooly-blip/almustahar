@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { createSessionCookie } from "@/lib/auth";
 
 const Schema = z.object({
   phone: z.string().min(8),
@@ -39,6 +40,8 @@ export async function POST(req: Request) {
 
     // Find or create the user
     let user;
+    let lawyerId: string | undefined;
+
     if (process.env.DATABASE_URL) {
       user = await prisma.user.findUnique({ where: { phone } });
       if (!user) {
@@ -56,6 +59,14 @@ export async function POST(req: Request) {
           data: { isVerified: true },
         });
       }
+      // Resolve lawyer profile if role is LAWYER
+      if (role === "LAWYER") {
+        const profile = await prisma.lawyerProfile.findUnique({
+          where: { userId: user.id },
+          select: { id: true },
+        });
+        lawyerId = profile?.id;
+      }
     } else {
       // Dev mode: use mock user
       user = {
@@ -64,9 +75,28 @@ export async function POST(req: Request) {
         phone,
         role,
       };
+      lawyerId = role === "LAWYER" ? "lp1" : undefined;
     }
 
-    return NextResponse.json({ ok: true, user });
+    // Build session payload
+    const sessionPayload = {
+      id: user.id,
+      name: user.name,
+      role: role as "CITIZEN" | "LAWYER" | "ADMIN",
+      phone: user.phone,
+      ...(lawyerId ? { lawyerId } : {}),
+    };
+
+    // Create signed JWT cookie
+    const setCookie = await createSessionCookie(sessionPayload);
+
+    // Return user info (without sensitive fields) and set the HttpOnly cookie
+    return NextResponse.json(
+      { ok: true, user: { id: user.id, name: user.name, role, phone: user.phone } },
+      {
+        headers: { "Set-Cookie": setCookie },
+      },
+    );
   } catch (e) {
     console.error("OTP verify error:", e);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });

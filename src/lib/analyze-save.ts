@@ -76,8 +76,8 @@ export async function saveAnalysisWithUser(
       if (aErr) return { ok: false, reason: `analysis insert: ${aErr.message}`, code: aErr.code };
 
       return { ok: true, source: "supabase-rest" };
-    } catch (e: any) {
-      return { ok: false, reason: e?.message ?? "unknown rest error" };
+    } catch (e: unknown) {
+      return { ok: false, reason: e instanceof Error ? e.message : "unknown rest error" };
     }
   };
 
@@ -108,19 +108,19 @@ export async function saveAnalysisWithUser(
           summary: analysis.summary,
           rights: analysis.rights,
           obligations: analysis.obligations,
-          risks: analysis.risks as any,
+          risks: analysis.risks,
           lawyerScore: analysis.lawyerScore,
           lawyerReason: analysis.lawyerReason,
-          nextSteps: analysis.nextSteps as any,
-          sources: analysis.sources as any,
+          nextSteps: JSON.parse(JSON.stringify(analysis.nextSteps)),
+          sources: JSON.parse(JSON.stringify(analysis.sources)),
           confidenceScore: analysis.confidenceScore,
           reviewStatus: analysis.reviewStatus,
-          rawResponse: { provider: "gemini" } as any,
+          rawResponse: { provider: "gemini" },
         },
       });
       return { ok: true, source: "prisma" };
-    } catch (e: any) {
-      return { ok: false, reason: e?.message ?? "unknown prisma error", code: e?.code };
+    } catch (e: unknown) {
+      return { ok: false, reason: e instanceof Error ? e.message : "unknown prisma error", code: e instanceof Error && "code" in e ? (e as {code?: string}).code : undefined };
     }
   };
 

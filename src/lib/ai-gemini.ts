@@ -1,5 +1,6 @@
 import "server-only";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { z } from "zod";
 import type { Analysis, DocumentType, LawyerScore } from "./types";
 import { mockAnalyses, mockDocuments } from "./mock-data";
 import { sleep } from "./utils";
@@ -78,25 +79,21 @@ export async function matchLegalCorpus(query: string, limit = 5): Promise<Corpus
   const embedding = await generateEmbedding(query);
   if (!embedding) return [];
 
-  const vecLiteral = "[" + embedding.join(",") + "]";
   try {
-    // Cast match_count to int explicitly to avoid bigint/int mismatch
-    const rows = await prisma.$queryRawUnsafe<
-      Array<{
-        id: string;
-        lawName: string;
-        lawType: string;
-        articleNumber: string | null;
-        title: string | null;
-        content: string;
-        similarity: number;
-      }>
-    >(
-      `SELECT id, "lawName", "lawType", "articleNumber", title, content, similarity
-       FROM match_legal_corpus($1::vector, 0.5, $2::int)`,
-      vecLiteral,
-      limit,
-    );
+    // Use Prisma template literal for type-safe parameterized query
+    const vecString = "[" + embedding.join(",") + "]";
+    const rows = await prisma.$queryRaw<Array<{
+      id: string;
+      lawName: string;
+      lawType: string;
+      articleNumber: string | null;
+      title: string | null;
+      content: string;
+      similarity: number;
+    }>>`
+      SELECT id, "lawName", "lawType", "articleNumber", title, content, similarity
+      FROM match_legal_corpus(${vecString}::vector, 0.5, ${limit}::int)
+    `;
     return rows;
   } catch (e) {
     console.error("[gemini] match_legal_corpus failed:", e);
@@ -137,6 +134,19 @@ interface GeminiAnalysisOutput {
   confidenceScore: number;
 }
 
+const GeminiOutputSchema = z.object({
+  documentType: z.enum(["rental", "employment", "traffic", "consumer", "general"]),
+  summary: z.string(),
+  rights: z.array(z.string()),
+  obligations: z.array(z.string()),
+  risks: z.array(z.object({ text: z.string(), severity: z.enum(["low", "medium", "high"]) })),
+  lawyerScore: z.enum(["LOW", "MEDIUM", "HIGH"]),
+  lawyerReason: z.string(),
+  nextSteps: z.array(z.object({ title: z.string(), description: z.string(), isPaid: z.boolean() })),
+  sources: z.array(z.object({ lawName: z.string(), articleNumber: z.string().optional(), excerpt: z.string() })),
+  confidenceScore: z.number().min(0).max(1),
+});
+
 function safeParseAnalysis(raw: string): GeminiAnalysisOutput | null {
   // Strip code fences if the model adds them anyway
   let cleaned = raw
@@ -148,7 +158,10 @@ function safeParseAnalysis(raw: string): GeminiAnalysisOutput | null {
   // 1. Try direct parse
   try {
     const parsed = JSON.parse(cleaned);
-    if (parsed.documentType && parsed.summary) return parsed as GeminiAnalysisOutput;
+    if (parsed.documentType && parsed.summary) {
+      const result = GeminiOutputSchema.safeParse(parsed);
+      if (result.success) return result.data;
+    }
   } catch { /* fall through */ }
 
   // 2. Try to find the largest JSON object in the text
@@ -158,7 +171,10 @@ function safeParseAnalysis(raw: string): GeminiAnalysisOutput | null {
     const candidate = cleaned.slice(firstBrace, lastBrace + 1);
     try {
       const parsed = JSON.parse(candidate);
-      if (parsed.documentType && parsed.summary) return parsed as GeminiAnalysisOutput;
+      if (parsed.documentType && parsed.summary) {
+        const result = GeminiOutputSchema.safeParse(parsed);
+        if (result.success) return result.data;
+      }
     } catch { /* fall through */ }
   }
 
@@ -173,7 +189,10 @@ function safeParseAnalysis(raw: string): GeminiAnalysisOutput | null {
     const openBrackets = (repaired.match(/\[/g) || []).length - (repaired.match(/\]/g) || []).length;
     repaired += "]".repeat(openBrackets) + "}".repeat(openBraces);
     const parsed = JSON.parse(repaired);
-    if (parsed.documentType && parsed.summary) return parsed as GeminiAnalysisOutput;
+    if (parsed.documentType && parsed.summary) {
+      const result = GeminiOutputSchema.safeParse(parsed);
+      if (result.success) return result.data;
+    }
   } catch { /* give up */ }
 
   return null;
@@ -184,11 +203,13 @@ export async function generateAnalysis({
   docType,
   title,
   content,
+  userId,
 }: {
   id: string;
   docType: DocumentType;
   title: string;
   content?: string | null;
+  userId?: string;
 }): Promise<Analysis> {
   // ----- 1. Generate real analysis via Gemini (if configured) -----
   let parsed: GeminiAnalysisOutput | null = null;
@@ -251,7 +272,7 @@ ${content.slice(0, 12000)}
 
   // ----- 2. Fall back to mock if Gemini not configured or failed -----
   if (!parsed) {
-    return generateMockAnalysis({ id, docType, title });
+    return generateMockAnalysis({ id, docType, title, userId });
   }
 
   // ----- 3. Merge parsed output with related corpus matches -----
@@ -273,7 +294,7 @@ ${content.slice(0, 12000)}
 
   mockDocuments.unshift({
     id: documentId,
-    userId: "u1",
+    userId: userId ?? "u1",
     title: finalTitle,
     fileType: "pdf",
     documentType: docType,
@@ -285,7 +306,7 @@ ${content.slice(0, 12000)}
   const analysis: Analysis = {
     id: analysisId,
     documentId,
-    userId: "u1",
+    userId: userId ?? "u1",
     documentType: docType,
     documentTitle: finalTitle,
     summary: parsed.summary,
@@ -372,10 +393,12 @@ async function generateMockAnalysis({
   id,
   docType,
   title,
+  userId,
 }: {
   id: string;
   docType: DocumentType;
   title: string;
+  userId?: string;
 }): Promise<Analysis> {
   await sleep(200);
   const m = MOCK_BY_TYPE[docType];
@@ -384,7 +407,7 @@ async function generateMockAnalysis({
 
   mockDocuments.unshift({
     id,
-    userId: "u1",
+    userId: userId ?? "u1",
     title: finalTitle,
     fileType: "pdf",
     documentType: docType,
@@ -396,7 +419,7 @@ async function generateMockAnalysis({
   return {
     id: analysisId,
     documentId: id,
-    userId: "u1",
+    userId: userId ?? "u1",
     documentType: docType,
     documentTitle: finalTitle,
     summary: m.summary ?? "—",

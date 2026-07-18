@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { mockAnalyses, mockLawyers } from "@/lib/mock-data";
@@ -325,10 +326,11 @@ export default async function AnalysisPage({
                     href={`/lawyers/${l.id}?fromAnalysis=${analysis.id}`}
                     className="flex items-center gap-3 rounded-xl border border-ink-200 p-3 transition-colors hover:border-brand-300 hover:bg-brand-50/30"
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
+                    <Image
                       src={l.avatar}
                       alt={l.name}
+                      width={40}
+                      height={40}
                       className="h-10 w-10 rounded-full object-cover"
                     />
                     <div className="flex-1">

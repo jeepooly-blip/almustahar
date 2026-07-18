@@ -46,7 +46,7 @@ export function SiteFooter() {
               <li><Link href="/legal/terms" className="hover:text-brand-700">{t.footer.terms}</Link></li>
               <li><Link href="/legal/privacy" className="hover:text-brand-700">{t.footer.privacy}</Link></li>
               <li><Link href="/legal/disclaimer" className="hover:text-brand-700">{t.footer.disclaimer}</Link></li>
-              <li><Link href="/about" className="hover:text-brand-700">{t.footer.about}</Link></li>
+              <li><Link href="/learn" className="hover:text-brand-700">{t.footer.about}</Link></li>
             </ul>
           </div>
         </div>

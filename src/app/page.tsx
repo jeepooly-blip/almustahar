@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -361,10 +362,11 @@ function LawyersPreview() {
           {mockLawyers.slice(0, 3).map((l) => (
             <Card key={l.id} className="overflow-hidden">
               <div className="flex items-center gap-3 border-b border-ink-100 p-5">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                <Image
                   src={l.avatar}
                   alt={l.name}
+                  width={56}
+                  height={56}
                   className="h-14 w-14 rounded-full border-2 border-white object-cover shadow-sm"
                 />
                 <div className="flex-1">

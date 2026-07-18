@@ -1,27 +1,31 @@
 import Link from "next/link";
-import { mockAnalyses, mockLawyers, mockUsers } from "@/lib/mock-data";
+import { redirect } from "next/navigation";
+import { getPendingAnalysesForReview, getLawyers } from "@/lib/data";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AdminActions } from "@/components/admin-actions";
+import { requireRole } from "@/lib/session-server";
 import {
   ShieldCheck,
   BarChart3,
   Users,
   CheckCircle2,
-  AlertTriangle,
   XCircle,
-  Edit,
-  Flag,
+  Eye,
+  Gavel,
   TrendingUp,
   FileCheck2,
-  Gavel,
-  Eye,
 } from "lucide-react";
 
-export default function AdminPage() {
-  const pendingAnalyses = mockAnalyses.filter((a) => a.reviewStatus === "PENDING");
-  const pendingVerifications = mockLawyers.filter((l) => !l.verified);
+export default async function AdminPage() {
+  // Server-side auth check: only ADMIN can access
+  const session = await requireRole("ADMIN");
+
+  // Fetch real data when database is available, fall back to empty lists
+  const pendingAnalyses = await getPendingAnalysesForReview();
+  const allLawyers = await getLawyers({ verifiedOnly: false });
+  const pendingVerifications = allLawyers.filter((l) => !l.verified);
 
   return (
     <div className="container-page py-10">
@@ -33,37 +37,33 @@ export default function AdminPage() {
           مراجعة ومتابعة المنصة
         </h1>
         <p className="mt-1 text-sm text-ink-600">
-          مراجعة التحليلات، توثيق المحامين، ومراقبة صحة المنصة.
+          مرحباً، {session.name} — مراجعة التحليلات، توثيق المحامين، ومراقبة صحة المنصة.
         </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <AdminStat
           icon={<Users className="h-5 w-5" />}
-          label="إجمالي المستخدمين"
-          value="8,234"
-          delta="+12%"
-          tone="info"
+          label="تحليلات في الانتظار"
+          value={String(pendingAnalyses.length)}
+          tone="warning"
         />
         <AdminStat
           icon={<FileCheck2 className="h-5 w-5" />}
-          label="تحليلات اليوم"
-          value="187"
-          delta="+24%"
-          tone="success"
+          label="محامون بحاجة توثيق"
+          value={String(pendingVerifications.length)}
+          tone="info"
         />
         <AdminStat
           icon={<Gavel className="h-5 w-5" />}
-          label="محامون نشطون"
-          value="62"
-          delta="+3"
+          label="إجمالي المحامين"
+          value={String(allLawyers.length)}
           tone="info"
         />
         <AdminStat
           icon={<TrendingUp className="h-5 w-5" />}
-          label="إيراد الشهر"
-          value="4,820 د.أ"
-          delta="+18%"
+          label="إجمالي التحليلات"
+          value={String(pendingAnalyses.length)}
           tone="success"
         />
       </div>
@@ -77,56 +77,60 @@ export default function AdminPage() {
             action={<Badge tone="warning">مراجعة</Badge>}
           />
           <CardBody className="space-y-3">
-            {mockAnalyses.slice(0, 3).map((a) => (
-              <div
-                key={a.id}
-                className="flex flex-wrap items-start gap-3 rounded-2xl border border-ink-200 p-4"
-              >
-                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-amber-50 text-amber-700">
-                  <FileCheck2 className="h-5 w-5" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-sm font-bold text-ink-900">
-                      {a.documentTitle}
-                    </h4>
-                    <Badge
-                      tone={
-                        a.reviewStatus === "APPROVED"
-                          ? "success"
+            {pendingAnalyses.length === 0 ? (
+              <p className="py-8 text-center text-sm text-ink-500">لا توجد تحليلات في الانتظار.</p>
+            ) : (
+              pendingAnalyses.slice(0, 10).map((a) => (
+                <div
+                  key={a.id}
+                  className="flex flex-wrap items-start gap-3 rounded-2xl border border-ink-200 p-4"
+                >
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-amber-50 text-amber-700">
+                    <FileCheck2 className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-bold text-ink-900">
+                        {a.documentTitle}
+                      </h4>
+                      <Badge
+                        tone={
+                          a.reviewStatus === "APPROVED"
+                            ? "success"
+                            : a.reviewStatus === "PENDING"
+                              ? "warning"
+                              : "danger"
+                        }
+                      >
+                        {a.reviewStatus === "APPROVED"
+                          ? "معتمد"
                           : a.reviewStatus === "PENDING"
-                            ? "warning"
-                            : "danger"
-                      }
-                    >
-                      {a.reviewStatus === "APPROVED"
-                        ? "معتمد"
-                        : a.reviewStatus === "PENDING"
-                          ? "معلّق"
-                          : "مرفوض"}
-                    </Badge>
+                            ? "معلّق"
+                            : "مرفوض"}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-xs text-ink-600">
+                      {a.summary}
+                    </p>
+                    <div className="mt-2 flex items-center gap-3 text-xs text-ink-500">
+                      <span>الثقة: {Math.round(a.confidenceScore * 100)}%</span>
+                      <span>·</span>
+                      <span>
+                        {new Date(a.createdAt).toLocaleDateString("ar-JO", { dateStyle: "medium" })}
+                      </span>
+                    </div>
                   </div>
-                  <p className="mt-1 line-clamp-2 text-xs text-ink-600">
-                    {a.summary}
-                  </p>
-                  <div className="mt-2 flex items-center gap-3 text-xs text-ink-500">
-                    <span>الثقة: {Math.round(a.confidenceScore * 100)}%</span>
-                    <span>·</span>
-                    <span>
-                      {new Date(a.createdAt).toLocaleDateString("ar-JO", { dateStyle: "medium" })}
-                    </span>
+                  <div className="flex flex-wrap gap-2">
+                    <Link href={`/analyses/${a.id}`}>
+                      <Button size="sm" variant="outline" icon={<Eye className="h-3.5 w-3.5" />}>
+                        عرض
+                      </Button>
+                    </Link>
+                    <AdminActions analysisId={a.id} />
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Link href={`/analyses/${a.id}`}>
-                    <Button size="sm" variant="outline" icon={<Eye className="h-3.5 w-3.5" />}>
-                      عرض
-                    </Button>
-                  </Link>
-                  <AdminActions analysisId={a.id} />
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </CardBody>
         </Card>
 
@@ -136,35 +140,36 @@ export default function AdminPage() {
             title={`توثيق المحامين (${pendingVerifications.length})`}
           />
           <CardBody className="space-y-3">
-            {pendingVerifications.map((l) => (
-              <div
-                key={l.id}
-                className="rounded-xl border border-amber-200 bg-amber-50/40 p-3"
-              >
-                <div className="flex items-center gap-2">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={l.avatar}
-                    alt={l.name}
-                    className="h-10 w-10 rounded-full object-cover"
-                  />
-                  <div className="flex-1">
-                    <h4 className="text-sm font-semibold text-ink-900">
-                      {l.name}
-                    </h4>
-                    <p className="text-xs text-ink-500">نقابة: {l.barNumber}</p>
+            {pendingVerifications.length === 0 ? (
+              <p className="py-8 text-center text-sm text-ink-500">لا توجد طلبات توثيق معلقة.</p>
+            ) : (
+              pendingVerifications.map((l) => (
+                <div
+                  key={l.id}
+                  className="rounded-xl border border-amber-200 bg-amber-50/40 p-3"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-brand-600 to-brand-500 text-sm font-bold text-white">
+                      {l.name[0]}
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-sm font-semibold text-ink-900">
+                        {l.name}
+                      </h4>
+                      <p className="text-xs text-ink-500">نقابة: {l.barNumber}</p>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex gap-1.5">
+                    <Button size="sm" className="flex-1" icon={<CheckCircle2 className="h-3.5 w-3.5" />}>
+                      اعتماد
+                    </Button>
+                    <Button size="sm" variant="outline" className="flex-1" icon={<XCircle className="h-3.5 w-3.5" />}>
+                      رفض
+                    </Button>
                   </div>
                 </div>
-                <div className="mt-2 flex gap-1.5">
-                  <Button size="sm" className="flex-1" icon={<CheckCircle2 className="h-3.5 w-3.5" />}>
-                    اعتماد
-                  </Button>
-                  <Button size="sm" variant="outline" className="flex-1" icon={<XCircle className="h-3.5 w-3.5" />}>
-                    رفض
-                  </Button>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </CardBody>
         </Card>
       </div>
@@ -216,13 +221,11 @@ function AdminStat({
   icon,
   label,
   value,
-  delta,
   tone,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
-  delta: string;
   tone: "info" | "success" | "warning" | "danger";
 }) {
   const tones = {
@@ -238,7 +241,6 @@ function AdminStat({
           <div className={`grid h-10 w-10 place-items-center rounded-xl ${tones[tone]}`}>
             {icon}
           </div>
-          <Badge tone={tone}>{delta}</Badge>
         </div>
         <div className="mt-3 text-2xl font-extrabold text-ink-900">{value}</div>
         <div className="text-xs text-ink-500">{label}</div>
@@ -276,5 +278,3 @@ function ChartCard({
     </div>
   );
 }
-
-

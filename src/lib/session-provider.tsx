@@ -45,6 +45,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         try {
           window.localStorage.removeItem(STORAGE_KEY);
         } catch {}
+        // Clear the HttpOnly cookie via API
+        fetch("/api/auth/signout", { method: "POST" }).catch(() => {});
       },
     }),
     [user],

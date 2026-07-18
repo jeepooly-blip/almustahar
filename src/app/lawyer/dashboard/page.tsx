@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { mockLeads, mockLawyers, mockUsers, specialtyLabels } from "@/lib/mock-data";
+import { getServerSession } from "@/lib/session-server";
+import { getLawyerById, getLeadsForLawyer } from "@/lib/data";
+import { mockLeads, mockLawyers, specialtyLabels } from "@/lib/mock-data";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,16 +13,32 @@ import {
   CheckCircle2,
   X,
   MessageSquare,
-  Calendar,
   DollarSign,
   User,
   BarChart3,
   Gavel,
+  ArrowLeft,
 } from "lucide-react";
 
-export default function LawyerDashboardPage() {
-  const lawyer = mockLawyers[0];
-  const lawyerLeads = mockLeads.filter((l) => l.lawyerId === lawyer.id);
+export default async function LawyerDashboardPage() {
+  const session = await getServerSession();
+  const lawyerId = session?.lawyerId;
+
+  let lawyer = mockLawyers[0]; // fallback for demo
+  let lawyerLeads = mockLeads.filter((l) => l.lawyerId === lawyer?.id);
+
+  if (session && lawyerId) {
+    try {
+      const realLawyer = await getLawyerById(lawyerId);
+      if (realLawyer) {
+        lawyer = realLawyer;
+        const realLeads = await getLeadsForLawyer(lawyerId);
+        if (realLeads.length > 0) lawyerLeads = realLeads;
+      }
+    } catch {
+      // Use mock data as fallback
+    }
+  }
 
   return (
     <div className="container-page py-10">
@@ -48,29 +66,27 @@ export default function LawyerDashboardPage() {
           icon={<CheckCircle2 className="h-5 w-5" />}
           label="طلبات مقبولة"
           value={lawyerLeads.filter((l) => l.status === "ACCEPTED").length.toString()}
-          delta="+12%"
           deltaTone="success"
         />
         <KpiCard
           icon={<Inbox className="h-5 w-5" />}
           label="طلبات معلقة"
           value={lawyerLeads.filter((l) => l.status === "PENDING").length.toString()}
-          delta="+3"
           deltaTone="warning"
         />
         <KpiCard
           icon={<TrendingUp className="h-5 w-5" />}
           label="نسبة التحويل"
-          value="68%"
-          delta="+5%"
+          value={lawyerLeads.length > 0
+            ? `${Math.round((lawyerLeads.filter((l) => l.status === "ACCEPTED" || l.status === "CONVERTED").length / lawyerLeads.length) * 100)}%`
+            : "0%"}
           deltaTone="success"
         />
         <KpiCard
           icon={<Clock className="h-5 w-5" />}
-          label="متوسط زمن الرد"
-          value="1.4 س"
-          delta="-12 دقيقة"
-          deltaTone="success"
+          label="إجمالي الطلبات"
+          value={lawyerLeads.length.toString()}
+          deltaTone="info"
         />
       </div>
 
@@ -81,9 +97,13 @@ export default function LawyerDashboardPage() {
           description="راجع طلبات العملاء وقرر قبولها أو رفضها"
         />
         <CardBody className="space-y-3">
-          {lawyerLeads.map((l) => (
-            <LeadRow key={l.id} lead={l} />
-          ))}
+          {lawyerLeads.length === 0 ? (
+            <p className="py-8 text-center text-sm text-ink-500">لا توجد طلبات واردة بعد.</p>
+          ) : (
+            lawyerLeads.map((l) => (
+              <LeadRow key={l.id} lead={l} />
+            ))
+          )}
         </CardBody>
       </Card>
 
@@ -114,15 +134,15 @@ export default function LawyerDashboardPage() {
             <ProfileItem label="التخصصات" value={
               <div className="flex flex-wrap gap-1.5">
                 {lawyer.specialties.map((s) => (
-                  <Badge key={s} tone="info">{specialtyLabels[s]?.ar}</Badge>
+                  <Badge key={s} tone="info">{specialtyLabels[s]?.ar ?? s}</Badge>
                 ))}
               </div>
             } />
             <ProfileItem label="أتعاب الساعة" value={
               <span className="font-bold text-ink-900">{lawyer.hourlyRate} د.أ</span>
             } />
-            <ProfileItem label="نسبة التحويل" value={
-              <span className="font-bold text-emerald-700">68%</span>
+            <ProfileItem label="سنوات الخبرة" value={
+              <span className="font-bold text-ink-900">{lawyer.yearsExperience} سنة</span>
             } />
           </CardBody>
         </Card>
@@ -220,7 +240,7 @@ function KpiCard({
   label: string;
   value: string;
   delta?: string;
-  deltaTone?: "success" | "warning" | "danger";
+  deltaTone?: "success" | "warning" | "danger" | "info";
 }) {
   return (
     <Card>
@@ -283,24 +303,3 @@ function ChartStat({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-
-function ArrowLeft(props: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={props.className}
-    >
-      <path d="M19 12H5M12 19l-7-7 7-7" />
-    </svg>
-  );
-}
-
-

@@ -1,22 +1,33 @@
-import { cookies } from "next/headers";
+import { verifySession, type SessionPayload } from "./auth";
 
-export interface ServerSession {
-  user: {
-    id: string;
-    name: string;
-    role: "CITIZEN" | "LAWYER" | "ADMIN";
-    phone: string;
-    lawyerId?: string;
-  } | null;
+export type { SessionPayload };
+export { verifySession as getServerSession };
+
+/**
+ * Require a valid session; throw a redirect if not authenticated.
+ */
+export async function requireSession(): Promise<SessionPayload> {
+  const session = await verifySession();
+  if (!session) {
+    // Import dynamically to avoid circular deps
+    const { redirect } = await import("next/navigation");
+    redirect("/auth/login");
+    // TypeScript needs a hint that redirect() never returns
+    return undefined as unknown as SessionPayload;
+  }
+  return session;
 }
 
-export async function getServerSession(): Promise<ServerSession["user"]> {
-  const c = await cookies();
-  const raw = c.get("lnp.session")?.value;
-  if (!raw) return null;
-  try {
-    return JSON.parse(decodeURIComponent(raw));
-  } catch {
-    return null;
+/**
+ * Require a specific role; throw a redirect if the user doesn't have it.
+ */
+export async function requireRole(
+  ...roles: SessionPayload["role"][]
+): Promise<SessionPayload> {
+  const session = await requireSession();
+  if (!roles.includes(session.role)) {
+    const { redirect } = await import("next/navigation");
+    redirect("/");
   }
+  return session;
 }
